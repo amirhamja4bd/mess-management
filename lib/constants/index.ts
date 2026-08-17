@@ -1,0 +1,4 @@
+export const DEFAULT_CURRENCY = "BDT";
+export const DEFAULT_MEAL_WEIGHT_MODE = "PERCENTAGE_OF_100";
+export const DEFAULT_MEAL_WEIGHT_TOTAL = 100;
+export const INVITATION_TTL_DAYS = 7;
