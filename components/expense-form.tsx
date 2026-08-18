@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { MoneyInput } from "@/components/money-input";
 import { FieldError } from "@/components/auth-card";
 import { api, ApiError } from "@/lib/frontend/api-client";
@@ -52,16 +53,13 @@ const METHODS_REQUIRING_PARTICIPANTS: string[] = [
   DISTRIBUTION_METHOD.INDIVIDUAL,
 ];
 
-const SIMPLE_METHODS: Array<{ value: string; label: string }> = [
-  { value: DISTRIBUTION_METHOD.EQUAL, label: "Equal share" },
-  { value: DISTRIBUTION_METHOD.MEAL_BASED, label: "Meal based" },
-  { value: DISTRIBUTION_METHOD.SELECTED_MEMBERS, label: "Selected members" },
-];
-
-const ADVANCED_METHODS: Array<{ value: string; label: string }> = [
-  { value: DISTRIBUTION_METHOD.PERCENTAGE, label: "Percentage" },
-  { value: DISTRIBUTION_METHOD.FIXED_AMOUNT, label: "Fixed amount" },
-  { value: DISTRIBUTION_METHOD.INDIVIDUAL, label: "Individual" },
+const ALL_METHODS: Array<{ value: string; label: string; desc: string }> = [
+  { value: DISTRIBUTION_METHOD.EQUAL, label: "Equal share", desc: "Split equally among all members" },
+  { value: DISTRIBUTION_METHOD.MEAL_BASED, label: "Meal based", desc: "Split by meal units" },
+  { value: DISTRIBUTION_METHOD.SELECTED_MEMBERS, label: "Selected members", desc: "Split among specific members" },
+  { value: DISTRIBUTION_METHOD.PERCENTAGE, label: "Percentage", desc: "Custom percentage per member" },
+  { value: DISTRIBUTION_METHOD.FIXED_AMOUNT, label: "Fixed amount", desc: "Fixed amount per member" },
+  { value: DISTRIBUTION_METHOD.INDIVIDUAL, label: "Individual", desc: "Each member pays separately" },
 ];
 
 function memberName(member: Member): string {
@@ -90,8 +88,6 @@ export function ExpenseForm({
   const isEdit = Boolean(expense);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showMore, setShowMore] = useState(false);
 
   const [description, setDescription] = useState(expense?.description ?? "");
   const [categoryId, setCategoryId] = useState(
@@ -123,6 +119,11 @@ export function ExpenseForm({
   const [statusPending, setStatusPending] = useState(
     isEdit ? expense?.status === "PENDING" : false
   );
+
+  // UI toggles
+  const [showMethodPicker, setShowMethodPicker] = useState(false);
+  const [showItems, setShowItems] = useState(items.length > 0);
+  const [showNotes, setShowNotes] = useState(!!details);
 
   const itemTotalPaisa = useMemo(
     () =>
@@ -160,6 +161,8 @@ export function ExpenseForm({
   };
 
   const removeItem = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
+
+  const needsParticipants = METHODS_REQUIRING_PARTICIPANTS.includes(method);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,301 +220,323 @@ export function ExpenseForm({
     }
   };
 
-  const needsParticipants = METHODS_REQUIRING_PARTICIPANTS.includes(method);
-  const isAdvancedMethod = ADVANCED_METHODS.some((m) => m.value === method);
-  const allMethods = [...SIMPLE_METHODS, ...(showAdvanced ? ADVANCED_METHODS : [])];
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-5xl w-full">
+        <DialogHeader className="border-b pb-2">
           <DialogTitle>{isEdit ? "Edit expense" : "Add expense"}</DialogTitle>
           <DialogDescription>
             Record an expense and choose how it is shared.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="description">Description *</Label>
-            <Input
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Monthly grocery run"
-              required
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-5">
+            {/* Primary fields */}
             <div className="space-y-1.5">
-              <Label htmlFor="category">Category *</Label>
-              <Select value={categoryId} onValueChange={(value) => value && setCategoryId(value)} items={categories.map((c) => ({ value: c._id, label: c.name }))}>
-                <SelectTrigger id="category" className="w-full">
-                  <SelectValue placeholder="Select category" />
+              <Label htmlFor="description">What was it for? *</Label>
+              <Input
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Monthly grocery run"
+                required
+              />
+            </div>
+
+            {!useItems ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="amount">How much? *</Label>
+                <MoneyInput id="amount" value={amount} onChange={setAmount} />
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-muted/40 p-3">
+                <span className="text-sm text-muted-foreground">Amount from items: </span>
+                <span className="text-sm font-semibold">{money(itemTotalPaisa)}</span>
+              </div>
+            )}
+
+            <div className="grid gap-4 grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="category">Category *</Label>
+                <Select value={categoryId} onValueChange={(value) => value && setCategoryId(value)} items={categories.map((c) => ({ value: c._id, label: c.name }))}>
+                  <SelectTrigger id="category" className="w-full">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category._id} value={category._id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="date">Date *</Label>
+                <DatePicker
+                  id="date"
+                  value={expenseDate}
+                  onChange={setExpenseDate}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="paidBy">Who paid? *</Label>
+              <Select value={paidByMemberId} onValueChange={(value) => value && setPaidByMemberId(value)} items={members.map((m) => ({ value: m._id, label: memberName(m) + (m._id === defaultPaidBy ? " (you)" : "") }))}>
+                <SelectTrigger id="paidBy" className="w-full">
+                  <SelectValue placeholder="Select member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category._id} value={category._id}>
-                      {category.name}
+                  {members.map((member) => (
+                    <SelectItem key={member._id} value={member._id}>
+                      {memberName(member)}
+                      {member._id === defaultPaidBy ? " (you)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="date">Date *</Label>
-              <DatePicker
-                id="date"
-                value={expenseDate}
-                onChange={setExpenseDate}
-              />
-            </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="paidBy">Paid by *</Label>
-            <Select value={paidByMemberId} onValueChange={(value) => value && setPaidByMemberId(value)} items={members.map((m) => ({ value: m._id, label: memberName(m) + (m._id === defaultPaidBy ? " (you)" : "") }))}>
-              <SelectTrigger id="paidBy" className="w-full">
-                <SelectValue placeholder="Who paid?" />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((member) => (
-                  <SelectItem key={member._id} value={member._id}>
-                    {memberName(member)}
-                    {member._id === defaultPaidBy ? " (you)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <Separator />
 
-          {!useItems ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="amount">Amount *</Label>
-              <MoneyInput id="amount" value={amount} onChange={setAmount} />
-            </div>
-          ) : (
-            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-              <span className="text-muted-foreground">Amount (from items): </span>
-              <span className="font-semibold">{money(itemTotalPaisa)}</span>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <Label htmlFor="method">How is it shared? *</Label>
-            <Select value={method} onValueChange={(value) => value && setMethod(value)} items={allMethods}>
-              <SelectTrigger id="method" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {allMethods.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!showAdvanced && !isAdvancedMethod ? (
+            {/* Splitting method - collapsed by default */}
+            {!showMethodPicker && method === DISTRIBUTION_METHOD.EQUAL ? (
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setShowAdvanced(true)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+                onClick={() => setShowMethodPicker(true)}
               >
-                Show advanced options
+                <Settings2 className="h-3.5 w-3.5" />
+                Split equally — change method
               </button>
-            ) : null}
-          </div>
+            ) : showMethodPicker ? (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>How is it shared?</Label>
+                  <Select value={method} onValueChange={(value) => value && setMethod(value)} items={ALL_METHODS}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ALL_METHODS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {ALL_METHODS.find((m) => m.value === method)?.desc}
+                  </p>
+                </div>
 
-          {method === DISTRIBUTION_METHOD.EQUAL || method === DISTRIBUTION_METHOD.MEAL_BASED ? (
-            <p className="text-xs text-muted-foreground">
-              {method === DISTRIBUTION_METHOD.MEAL_BASED
-                ? "Split by meal units across all active members."
-                : "Split equally across all members active on this date."}
-            </p>
-          ) : null}
+                {needsParticipants ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Participants</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addParticipant}>
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                      </Button>
+                    </div>
+                    {participants.length === 0 ? (
+                      <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        No participants selected. Click Add to choose members.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {participants.map((participant, index) => {
+                          return (
+                            <div key={participant.organizationMemberId} className="flex items-center gap-2">
+                              <div className="min-w-0 flex-1">
+                                <Select
+                                  value={participant.organizationMemberId}
+                                  onValueChange={(value) =>
+                                    value && updateParticipant(index, { organizationMemberId: value })
+                                  }
+                                  items={members.map((m) => ({ value: m._id, label: memberName(m) }))}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select member" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {members.map((m) => (
+                                      <SelectItem key={m._id} value={m._id}>
+                                        {memberName(m)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {method === DISTRIBUTION_METHOD.PERCENTAGE ? (
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  className="w-20"
+                                  placeholder="%"
+                                  value={participant.percent ?? ""}
+                                  onChange={(e) =>
+                                    updateParticipant(index, { percent: Number(e.target.value) })
+                                  }
+                                />
+                              ) : null}
+                              {method === DISTRIBUTION_METHOD.FIXED_AMOUNT ? (
+                                <MoneyInput
+                                  className="w-32"
+                                  value={participant.amount ?? 0}
+                                  onChange={(paisa) => updateParticipant(index, { amount: paisa })}
+                                />
+                              ) : null}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeParticipant(index)}
+                                aria-label="Remove participant"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {method === DISTRIBUTION_METHOD.PERCENTAGE && (
+                      <p className="text-xs text-muted-foreground">
+                        Total: {participants.reduce((sum, p) => sum + (p.percent ?? 0), 0)}%
+                        {participants.reduce((sum, p) => sum + (p.percent ?? 0), 0) !== 100 && (
+                          <span className="text-amber-600"> (must be 100%)</span>
+                        )}
+                      </p>
+                    )}
+                    {method === DISTRIBUTION_METHOD.FIXED_AMOUNT && (
+                      <p className="text-xs text-muted-foreground">
+                        Total: {money(participants.reduce((sum, p) => sum + (p.amount ?? 0), 0))}
+                        {participants.reduce((sum, p) => sum + (p.amount ?? 0), 0) !== effectiveAmount && (
+                          <span className="text-amber-600"> (must equal {money(effectiveAmount)})</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
 
-          {needsParticipants ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Participants</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addParticipant}>
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Add
-                </Button>
+                {method === DISTRIBUTION_METHOD.EQUAL || method === DISTRIBUTION_METHOD.MEAL_BASED ? (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => { setShowMethodPicker(false); setMethod(DISTRIBUTION_METHOD.EQUAL); }}
+                  >
+                    Back to equal split
+                  </button>
+                ) : null}
               </div>
-              {participants.length === 0 ? (
-                <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-                  No participants selected.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {participants.map((participant, index) => {
-                    const member = members.find((m) => m._id === participant.organizationMemberId);
-                    return (
-                      <div key={participant.organizationMemberId} className="flex items-center gap-2">
-                        <div className="min-w-0 flex-1">
-                          <Select
-                            value={participant.organizationMemberId}
-                            onValueChange={(value) =>
-                              value && updateParticipant(index, { organizationMemberId: value })
-                            }
-                            items={members.map((m) => ({ value: m._id, label: memberName(m) }))}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select member" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {members.map((m) => (
-                                <SelectItem key={m._id} value={m._id}>
-                                  {memberName(m)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {method === DISTRIBUTION_METHOD.PERCENTAGE ? (
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            className="w-20"
-                            placeholder="%"
-                            value={participant.percent ?? ""}
-                            onChange={(e) =>
-                              updateParticipant(index, { percent: Number(e.target.value) })
-                            }
-                          />
-                        ) : null}
-                        {method === DISTRIBUTION_METHOD.FIXED_AMOUNT ? (
-                          <MoneyInput
-                            className="w-32"
-                            value={participant.amount ?? 0}
-                            onChange={(paisa) => updateParticipant(index, { amount: paisa })}
-                          />
-                        ) : null}
+            ) : null}
+
+            <Separator />
+
+            {/* Items (bazar) - simple toggle */}
+            <div>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                onClick={() => setShowItems(!showItems)}
+              >
+                <span className="font-medium">
+                  {useItems ? `${items.length} item${items.length !== 1 ? "s" : ""}` : "Add items (optional)"}
+                </span>
+                {showItems ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {showItems && (
+                <div className="mt-2 space-y-2">
+                  {items.map((item, index) => (
+                    <div key={index} className="rounded-lg border p-2 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="flex-1"
+                          placeholder="Item name (e.g. Rice, Oil)"
+                          value={item.name}
+                          onChange={(e) => updateItem(index, { name: e.target.value })}
+                          required
+                        />
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() => removeParticipant(index)}
-                          aria-label="Remove participant"
+                          onClick={() => removeItem(index)}
+                          aria-label="Remove item"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
-                        {member?._id === defaultPaidBy ? <span className="text-xs text-muted-foreground">(you)</span> : null}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-              {method === DISTRIBUTION_METHOD.PERCENTAGE ? (
-                <p className="text-xs text-muted-foreground">
-                  Percentages must total exactly 100. Current:{" "}
-                  {participants.reduce((sum, p) => sum + (p.percent ?? 0), 0)}
-                </p>
-              ) : null}
-              {method === DISTRIBUTION_METHOD.FIXED_AMOUNT ? (
-                <p className="text-xs text-muted-foreground">
-                  Participant amounts must total the expense amount. Current:{" "}
-                  {money(participants.reduce((sum, p) => sum + (p.amount ?? 0), 0))}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-1 rounded-md border py-2 text-sm text-muted-foreground hover:bg-muted"
-            onClick={() => setShowMore(!showMore)}
-          >
-            {showMore ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            {showMore ? "Less options" : "More options"}
-          </button>
-
-          {showMore ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Items (bazar / grocery)</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                    <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="Qty"
+                          value={item.quantity ?? ""}
+                          onChange={(e) => updateItem(index, { quantity: Number(e.target.value) || undefined })}
+                        />
+                        <Input
+                          placeholder="Unit"
+                          value={item.unit ?? ""}
+                          onChange={(e) => updateItem(index, { unit: e.target.value })}
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="Price"
+                          value={item.unitPrice ?? ""}
+                          onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value) || undefined })}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" className="w-full" onClick={addItem}>
+                    <Plus className="mr-1 h-3.5 w-3.5" /> Add item
                   </Button>
                 </div>
-                {items.length > 0 ? (
-                  <div className="space-y-2">
-                    {items.map((item, index) => (
-                      <div key={index} className="rounded-lg border p-2">
-                        <div className="mb-2 flex items-center gap-2">
-                          <Input
-                            className="flex-1"
-                            placeholder="Item name"
-                            value={item.name}
-                            onChange={(e) => updateItem(index, { name: e.target.value })}
-                            required
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeItem(index)}
-                            aria-label="Remove item"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            placeholder="Qty"
-                            value={item.quantity ?? ""}
-                            onChange={(e) => updateItem(index, { quantity: Number(e.target.value) || undefined })}
-                          />
-                          <Input
-                            placeholder="Unit"
-                            value={item.unit ?? ""}
-                            onChange={(e) => updateItem(index, { unit: e.target.value })}
-                          />
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            placeholder="Price"
-                            value={item.unitPrice ?? ""}
-                            onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value) || undefined })}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="details">Notes</Label>
-                <Textarea
-                  id="details"
-                  value={details}
-                  onChange={(e) => setDetails(e.target.value)}
-                  rows={2}
-                  placeholder="Optional notes"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="pending"
-                  checked={statusPending}
-                  onCheckedChange={setStatusPending}
-                />
-                <Label htmlFor="pending" className="text-sm font-normal">
-                  Save as pending approval
-                </Label>
-              </div>
+              )}
             </div>
-          ) : null}
 
-          <FieldError message={error ?? undefined} />
+            {/* Notes - simple toggle */}
+            <div>
+              {!showNotes && !details ? (
+                <button
+                  type="button"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowNotes(true)}
+                >
+                  + Add notes
+                </button>
+              ) : showNotes ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="details">Notes</Label>
+                  <Textarea
+                    id="details"
+                    value={details}
+                    onChange={(e) => setDetails(e.target.value)}
+                    rows={2}
+                    placeholder="Optional notes"
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {/* Pending approval */}
+            <div className="flex items-center gap-2">
+              <Switch
+                id="pending"
+                checked={statusPending}
+                onCheckedChange={setStatusPending}
+              />
+              <Label htmlFor="pending" className="text-sm font-normal text-muted-foreground">
+                Save as pending approval
+              </Label>
+            </div>
+
+            <FieldError message={error ?? undefined} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>

@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -118,6 +119,9 @@ export default function SettingsPage() {
             <TabsTrigger value="categories">Expense categories</TabsTrigger>
             <TabsTrigger value="methods">Payment methods</TabsTrigger>
             <TabsTrigger value="roles">Roles</TabsTrigger>
+            {process.env.NODE_ENV !== "production" ? (
+              <TabsTrigger value="developer">Developer</TabsTrigger>
+            ) : null}
           </TabsList>
 
         <TabsContent value="general" className="space-y-4">
@@ -280,6 +284,20 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {process.env.NODE_ENV !== "production" ? (
+          <TabsContent value="developer" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                <CardDescription>Development only. These actions are irreversible.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <DevResetSection />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       {categoryEditor ? (
@@ -855,5 +873,167 @@ function RoleEditorDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const DEV_KEEP_COLLECTIONS = [
+  { name: "users", desc: "User accounts" },
+  { name: "organizations", desc: "Organizations" },
+  { name: "organization_members", desc: "Memberships" },
+  { name: "roles", desc: "Roles & permissions" },
+  { name: "expense_categories", desc: "Expense categories" },
+  { name: "payment_methods", desc: "Payment methods" },
+  { name: "meal_configs", desc: "Meal configs" },
+  { name: "meal_types", desc: "Meal types" },
+];
+
+const DEV_REMOVE_COLLECTIONS = [
+  { name: "expenses", desc: "All expenses" },
+  { name: "payments", desc: "All payments" },
+  { name: "adjustments", desc: "All adjustments" },
+  { name: "monthly_cycles", desc: "All monthly cycles" },
+  { name: "member_monthly_summaries", desc: "All member summaries" },
+  { name: "settlements", desc: "All settlements" },
+  { name: "settlement_transactions", desc: "All settlement transactions" },
+  { name: "meal_entries", desc: "All meal entries" },
+  { name: "meal_day_statuses", desc: "All meal day statuses" },
+  { name: "invitations", desc: "All invitations" },
+  { name: "notifications", desc: "All notifications" },
+  { name: "audit_logs", desc: "All audit logs" },
+  { name: "files", desc: "All uploaded files" },
+  { name: "password_reset_tokens", desc: "All password reset tokens" },
+  { name: "subscriptions", desc: "All subscriptions" },
+];
+
+function DevResetSection() {
+  const [confirmMode, setConfirmMode] = useState<"full" | "partial" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleReset = async (mode: "full" | "partial") => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/dev/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "messmate-dev-reset-2026", mode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setResult(`Done! Dropped ${data.dropped.length} collections (${mode} reset).`);
+      setConfirmMode(null);
+    } catch (err) {
+      setResult(err instanceof Error ? err.message : "Failed to reset");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Partial Reset */}
+      <div className="space-y-3">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+            Reset Transactional Data
+          </p>
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-300">
+            Removes expenses, payments, meals, settlements, cycles. Keeps users, orgs, roles, categories.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Keeps:</p>
+            <ul className="space-y-0.5">
+              {DEV_KEEP_COLLECTIONS.map((c) => (
+                <li key={c.name} className="flex items-center gap-2 text-xs">
+                  <span className="font-mono">{c.name}</span>
+                  <span className="text-muted-foreground">— {c.desc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-destructive">Deletes:</p>
+            <ul className="space-y-0.5">
+              {DEV_REMOVE_COLLECTIONS.map((c) => (
+                <li key={c.name} className="flex items-center gap-2 text-xs">
+                  <span className="font-mono">{c.name}</span>
+                  <span className="text-muted-foreground">— {c.desc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <Button variant="outline" className="border-amber-500 text-amber-700 hover:bg-amber-50 hover:text-amber-800" onClick={() => setConfirmMode("partial")} disabled={busy}>
+          Reset Transactions Only
+        </Button>
+      </div>
+
+      {/* Full Reset */}
+      <div className="space-y-3">
+        <Separator />
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
+          <p className="text-sm font-medium text-rose-700 dark:text-rose-400">
+            Full Reset — Delete Everything
+          </p>
+          <p className="mt-1 text-xs text-rose-600 dark:text-rose-300">
+            Drops ALL collections. You will need to sign up again.
+          </p>
+        </div>
+
+        <Button variant="destructive" onClick={() => setConfirmMode("full")} disabled={busy}>
+          Reset Everything
+        </Button>
+      </div>
+
+      {result ? (
+        <p className={`text-sm ${result.includes("Done") ? "text-emerald-600" : "text-rose-600"}`}>
+          {result}
+        </p>
+      ) : null}
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmMode !== null} onOpenChange={(open) => !open && setConfirmMode(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">
+              {confirmMode === "full" ? "Delete everything?" : "Delete transactional data?"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmMode === "full"
+                ? "This cannot be undone. ALL collections will be permanently deleted:"
+                : "This cannot be undone. The following collections will be permanently deleted:"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-60 overflow-y-auto rounded-lg border px-4 py-2">
+            <ul className="space-y-1 text-sm">
+              {(confirmMode === "full"
+                ? [...DEV_KEEP_COLLECTIONS, ...DEV_REMOVE_COLLECTIONS]
+                : DEV_REMOVE_COLLECTIONS
+              ).map((col) => (
+                <li key={col.name} className="flex items-center justify-between py-0.5">
+                  <span className="font-mono text-xs">{col.name}</span>
+                  <span className="text-xs text-muted-foreground">{col.desc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmMode(null)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => { if (confirmMode) void handleReset(confirmMode); }} disabled={busy}>
+              {busy ? "Deleting…" : confirmMode === "full" ? "Yes, delete everything" : "Yes, delete transactions"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

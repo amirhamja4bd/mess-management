@@ -275,19 +275,26 @@ export async function calculateCycle(context: OrgContext, cycleId: string) {
   const documents = await loadCycleDocuments(context, startDate, endDate);
   const openingBalances = await loadOpeningBalances(context, cycle.periodKey);
 
-  const result = calculateMonthlyAccounting({
-    periodKey: cycle.periodKey,
-    startDate,
-    endDate,
-    members: documents.members,
-    mealConfigSlices: documents.configSlices,
-    mealEntries: documents.entries,
-    cancelledMealDays: documents.cancelledDays,
-    expenses: documents.expenses,
-    payments: documents.payments,
-    adjustments: documents.adjustments,
-    openingBalances,
-  });
+  let result;
+  try {
+    result = calculateMonthlyAccounting({
+      periodKey: cycle.periodKey,
+      startDate,
+      endDate,
+      members: documents.members,
+      mealConfigSlices: documents.configSlices,
+      mealEntries: documents.entries,
+      cancelledMealDays: documents.cancelledDays,
+      expenses: documents.expenses,
+      payments: documents.payments,
+      adjustments: documents.adjustments,
+      openingBalances,
+    });
+  } catch (err) {
+    cycle.status = MONTHLY_CYCLE_STATUS.OPEN;
+    await cycle.save();
+    throw err;
+  }
 
   // --- persist per-member summaries --------------------------------------
   const mealTypes = await MealTypeModel.find({ organizationId: context.organizationId });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, XCircle, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, XCircle, CheckCircle2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useOrg } from "@/lib/frontend/org-context";
 import { useApiData } from "@/lib/frontend/use-api-data";
@@ -12,6 +12,7 @@ import { PageHeader, LoadingState, ErrorState, EmptyState } from "@/components/s
 import { Pagination } from "@/components/pagination";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ExpenseForm } from "@/components/expense-form";
+import { ExpenseViewDialog } from "@/components/expense-view-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +64,7 @@ export default function ExpensesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [voiding, setVoiding] = useState<Expense | null>(null);
+  const [viewing, setViewing] = useState<Expense | null>(null);
 
   const { data, error, loading, reload } = useApiData<ApiListData<Expense>>(
     async () =>
@@ -200,7 +202,13 @@ export default function ExpensesPage() {
                 {data.items.map((expense) => (
                   <TableRow key={expense._id}>
                     <TableCell className="max-w-[220px]">
-                      <p className="truncate font-medium">{expense.description}</p>
+                      <button
+                        type="button"
+                        className="text-left hover:underline"
+                        onClick={() => setViewing(expense)}
+                      >
+                        <p className="truncate font-medium">{expense.description}</p>
+                      </button>
                       <p className="text-xs text-muted-foreground sm:hidden">{categoryName(expense)} · {formatDate(expense.expenseDate)}</p>
                       {expense.items.length > 0 ? (
                         <p className="text-xs text-muted-foreground">{expense.items.length} items</p>
@@ -223,6 +231,9 @@ export default function ExpensesPage() {
                             Actions
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setViewing(expense)}>
+                              <Eye className="mr-2 h-4 w-4" /> View
+                            </DropdownMenuItem>
                             {(canApprove && expense.status === "PENDING") ? (
                               <DropdownMenuItem onClick={() => void handleApprove(expense)}>
                                 <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Approve
@@ -265,6 +276,7 @@ export default function ExpensesPage() {
         </>
       ) : null}
 
+      {/* Add/Edit Form */}
       {formOpen ? (
         <ExpenseForm
           open={formOpen}
@@ -278,6 +290,21 @@ export default function ExpensesPage() {
         />
       ) : null}
 
+      {/* View Detail Modal */}
+      <ExpenseViewDialog
+        open={Boolean(viewing)}
+        onOpenChange={(open) => !open && setViewing(null)}
+        expense={viewing}
+        members={activeMembers}
+        canEdit={canEdit}
+        canApprove={canApprove}
+        canDelete={canDelete}
+        onEdit={(expense) => { setEditing(expense); setFormOpen(true); }}
+        onApprove={handleApprove}
+        onVoid={(expense) => setVoiding(expense)}
+      />
+
+      {/* Void Confirm */}
       <ConfirmDialog
         open={Boolean(voiding)}
         onOpenChange={(open) => !open && setVoiding(null)}
